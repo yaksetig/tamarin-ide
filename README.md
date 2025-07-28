@@ -1,2 +1,2 @@
-# Circomspect Server
+# Tamarin Server
 TBD
