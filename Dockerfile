@@ -1,4 +1,4 @@
-# Use Python slim image (similar to typical Flask apps)
+# Use Python slim image
 FROM python:3.11-slim
 
 # Set environment variables
@@ -30,5 +30,5 @@ COPY . .
 # Expose port
 EXPOSE $PORT
 
-# Run the application (Railway compatible)
+# Run the application
 CMD python app.py
