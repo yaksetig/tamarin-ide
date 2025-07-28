@@ -10,7 +10,7 @@ HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🔍 Circomspect Web Interface</title>
+    <title>🔒 Tamarin Prover Web Interface</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -191,22 +191,49 @@ HTML_TEMPLATE = '''
             color: #7f8c8d;
             border-top: 1px solid #e0e0e0;
         }
+        
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            justify-content: center;
+        }
+        
+        .mode-btn {
+            padding: 10px 20px;
+            border: 2px solid #3498db;
+            background: white;
+            color: #3498db;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .mode-btn.active {
+            background: #3498db;
+            color: white;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔍 Circomspect Web Interface</h1>
-            <p>Security analysis for Circom circuits using circomspect</p>
+            <h1>🔒 Tamarin Prover Web Interface</h1>
+            <p>Security protocol verification using Tamarin Prover</p>
         </div>
         
         <div class="content">
             <form id="uploadForm">
+                <div class="mode-selector">
+                    <button type="button" class="mode-btn active" id="checkMode">✓ Check Theory</button>
+                    <button type="button" class="mode-btn" id="proveMode">🔍 Prove Lemmas</button>
+                </div>
+                
                 <div class="upload-area" id="uploadArea">
-                    <input type="file" id="fileInput" accept=".circom" style="display: none;">
+                    <input type="file" id="fileInput" accept=".spthy" style="display: none;">
                     <div class="upload-icon">📁</div>
                     <div>
-                        <strong>Click to upload .circom file</strong><br>
+                        <strong>Click to upload .spthy file</strong><br>
                         <small style="color: #7f8c8d;">or drag & drop here</small>
                     </div>
                 </div>
@@ -215,11 +242,11 @@ HTML_TEMPLATE = '''
                 
                 <textarea 
                     id="codeArea" 
-                    placeholder="Or paste your Circom code here..."
+                    placeholder="Or paste your Tamarin theory code here..."
                 ></textarea>
                 
-                <button type="submit" class="btn" id="auditBtn">
-                    🔍 Run Circomspect Analysis
+                <button type="submit" class="btn" id="processBtn">
+                    🔒 Run Tamarin Analysis
                 </button>
             </form>
             
@@ -227,7 +254,7 @@ HTML_TEMPLATE = '''
         </div>
         
         <div class="footer">
-            <p>Powered by <a href="https://github.com/trailofbits/circomspect" target="_blank">circomspect</a></p>
+            <p>Powered by <a href="https://tamarin-prover.github.io/" target="_blank">Tamarin Prover</a></p>
         </div>
     </div>
 
@@ -237,8 +264,27 @@ HTML_TEMPLATE = '''
         const uploadForm = document.getElementById('uploadForm');
         const uploadArea = document.getElementById('uploadArea');
         const results = document.getElementById('results');
-        const auditBtn = document.getElementById('auditBtn');
+        const processBtn = document.getElementById('processBtn');
         const fileInfo = document.getElementById('fileInfo');
+        const checkMode = document.getElementById('checkMode');
+        const proveMode = document.getElementById('proveMode');
+        
+        let currentMode = 'check';
+
+        // Mode selection
+        checkMode.addEventListener('click', () => {
+            currentMode = 'check';
+            checkMode.classList.add('active');
+            proveMode.classList.remove('active');
+            processBtn.innerHTML = '✓ Check Theory';
+        });
+        
+        proveMode.addEventListener('click', () => {
+            currentMode = 'prove';
+            proveMode.classList.add('active');
+            checkMode.classList.remove('active');
+            processBtn.innerHTML = '🔍 Prove Lemmas';
+        });
 
         // File upload handling
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -268,8 +314,8 @@ HTML_TEMPLATE = '''
         });
 
         function handleFile(file) {
-            if (!file.name.endsWith('.circom')) {
-                alert('Please upload a .circom file');
+            if (!file.name.endsWith('.spthy')) {
+                alert('Please upload a .spthy file');
                 return;
             }
             
@@ -292,25 +338,26 @@ HTML_TEMPLATE = '''
             const code = codeArea.value.trim();
             
             if (!code) {
-                alert('Please provide Circom code to analyze');
+                alert('Please provide Tamarin theory code to analyze');
                 return;
             }
 
-            auditBtn.disabled = true;
-            auditBtn.innerHTML = '⏳ Running circomspect...';
+            processBtn.disabled = true;
+            const originalText = processBtn.innerHTML;
+            processBtn.innerHTML = '⏳ Processing...';
             
             results.innerHTML = `
                 <div class="result loading">
-                    <h3>🔄 Running Circomspect Analysis...</h3>
-                    <p>Please wait while we analyze your circuit</p>
+                    <h3>🔄 Running Tamarin Analysis...</h3>
+                    <p>Please wait while we ${currentMode === 'check' ? 'check your theory' : 'prove the lemmas'}</p>
                 </div>
             `;
 
             try {
-                const response = await fetch('/audit', {
+                const response = await fetch('/tamarin', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({code: code})
+                    body: JSON.stringify({code: code, mode: currentMode})
                 });
                 
                 const result = await response.json();
@@ -324,8 +371,8 @@ HTML_TEMPLATE = '''
                     </div>
                 `;
             } finally {
-                auditBtn.disabled = false;
-                auditBtn.innerHTML = '🔍 Run Circomspect Analysis';
+                processBtn.disabled = false;
+                processBtn.innerHTML = originalText;
             }
         });
         
@@ -333,30 +380,46 @@ HTML_TEMPLATE = '''
             if (!result.success) {
                 results.innerHTML = `
                     <div class="result error">
-                        <h3>❌ Analysis Error</h3>
+                        <h3>❌ Tamarin Error</h3>
                         <pre>${result.error}</pre>
                     </div>
                 `;
                 return;
             }
             
-            // Display the raw circomspect output
+            // Display the raw tamarin output
             if (result.output) {
-                const hasIssues = result.output.includes('warning:') || 
-                                 result.output.includes('error:') || 
-                                 result.output.includes('advice:');
+                const hasErrors = result.output.toLowerCase().includes('error') || 
+                                 result.output.toLowerCase().includes('failed') ||
+                                 result.returncode !== 0;
+                
+                const hasWarnings = result.output.toLowerCase().includes('warning');
+                
+                let resultClass = 'success';
+                let resultIcon = '✅';
+                let resultTitle = 'Analysis Complete';
+                
+                if (hasErrors) {
+                    resultClass = 'error';
+                    resultIcon = '❌';
+                    resultTitle = 'Analysis Failed';
+                } else if (hasWarnings) {
+                    resultClass = 'warning';
+                    resultIcon = '⚠️';
+                    resultTitle = 'Analysis Complete with Warnings';
+                }
                 
                 results.innerHTML = `
-                    <div class="result ${hasIssues ? 'warning' : 'success'}">
-                        <h3>${hasIssues ? '📋 Analysis Results' : '✅ No Issues Found'}</h3>
-                        ${hasIssues ? '<pre>' + result.output + '</pre>' : '<p>Circomspect found no issues in your circuit!</p>'}
+                    <div class="result ${resultClass}">
+                        <h3>${resultIcon} ${resultTitle}</h3>
+                        <pre>${result.output}</pre>
                     </div>
                 `;
             } else {
                 results.innerHTML = `
                     <div class="result success">
                         <h3>✅ Analysis Complete</h3>
-                        <p>Circomspect analysis completed successfully. No issues found.</p>
+                        <p>Tamarin analysis completed successfully.</p>
                     </div>
                 `;
             }
@@ -370,31 +433,41 @@ HTML_TEMPLATE = '''
 def index():
     return render_template_string(HTML_TEMPLATE)
 
-@app.route('/audit', methods=['POST'])
-def audit():
+@app.route('/tamarin', methods=['POST'])
+def tamarin_analysis():
     try:
         data = request.get_json()
-        circom_code = data['code']
+        spthy_code = data['code']
+        mode = data.get('mode', 'check')  # 'check' or 'prove'
         
-        # Create a temporary file for the circom code
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.circom', delete=False) as f:
-            f.write(circom_code)
+        # Create a temporary file for the spthy code
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.spthy', delete=False) as f:
+            f.write(spthy_code)
             temp_file = f.name
         
         try:
-            # Run circomspect
+            # Prepare tamarin command based on mode
+            if mode == 'check':
+                # Just check the theory syntax and wellformedness
+                cmd = ['tamarin-prover', '--check-only', temp_file]
+            else:  # prove mode
+                # Attempt to prove all lemmas
+                cmd = ['tamarin-prover', '--prove', temp_file]
+            
+            # Run tamarin-prover
             result = subprocess.run(
-                ['circomspect', temp_file],
+                cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=120  # Increased timeout for proof attempts
             )
             
             # Return the output
             return jsonify({
                 'success': True,
                 'output': result.stdout if result.stdout else result.stderr,
-                'returncode': result.returncode
+                'returncode': result.returncode,
+                'mode': mode
             })
             
         finally:
@@ -405,17 +478,115 @@ def audit():
     except subprocess.TimeoutExpired:
         return jsonify({
             'success': False,
-            'error': 'Analysis timed out after 30 seconds'
+            'error': 'Analysis timed out after 2 minutes'
         })
     except FileNotFoundError:
         return jsonify({
             'success': False,
-            'error': 'circomspect not found. Please ensure circomspect is installed and in PATH.'
+            'error': 'tamarin-prover not found. Please ensure Tamarin Prover is installed and in PATH.'
         })
     except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e)
+        })
+
+@app.route('/n8n/compile', methods=['POST'])
+def n8n_compile():
+    """
+    N8N-compatible endpoint for compiling Tamarin theories.
+    Expects JSON with 'code' field containing the .spthy code.
+    Returns simple success/failure response.
+    """
+    try:
+        # Handle both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+            spthy_code = data.get('code', '')
+        else:
+            spthy_code = request.form.get('code', '')
+        
+        if not spthy_code:
+            return jsonify({
+                'success': False,
+                'error': 'No code provided',
+                'message': 'Please provide Tamarin theory code in the "code" field'
+            }), 400
+        
+        # Create a temporary file for the spthy code
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.spthy', delete=False) as f:
+            f.write(spthy_code)
+            temp_file = f.name
+        
+        try:
+            # Run tamarin-prover with check-only flag
+            result = subprocess.run(
+                ['tamarin-prover', '--check-only', temp_file],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            # Determine if compilation was successful
+            compilation_successful = result.returncode == 0
+            
+            # Prepare response
+            response_data = {
+                'success': compilation_successful,
+                'returncode': result.returncode,
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'message': 'Compilation successful' if compilation_successful else 'Compilation failed'
+            }
+            
+            # Return appropriate HTTP status
+            status_code = 200 if compilation_successful else 400
+            
+            return jsonify(response_data), status_code
+            
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+        
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'success': False,
+            'error': 'Compilation timed out',
+            'message': 'Tamarin compilation timed out after 60 seconds'
+        }), 408
+    except FileNotFoundError:
+        return jsonify({
+            'success': False,
+            'error': 'tamarin-prover not found',
+            'message': 'Tamarin Prover is not installed or not in PATH'
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Internal server error during compilation'
+        }), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    try:
+        # Quick check if tamarin-prover is available
+        result = subprocess.run(['tamarin-prover', '--version'], 
+                              capture_output=True, text=True, timeout=5)
+        tamarin_available = result.returncode == 0
+        
+        return jsonify({
+            'status': 'healthy',
+            'tamarin_available': tamarin_available,
+            'tamarin_version': result.stdout.strip() if tamarin_available else None
+        })
+    except:
+        return jsonify({
+            'status': 'healthy',
+            'tamarin_available': False,
+            'tamarin_version': None
         })
 
 if __name__ == '__main__':
