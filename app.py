@@ -429,6 +429,80 @@ HTML_TEMPLATE = '''
 </html>
 '''
 
+def analyze_tamarin_output(stdout, stderr, returncode):
+    """
+    Analyze Tamarin output to determine success/failure and extract meaningful information.
+    
+    Tamarin output patterns:
+    - Success: "summary of summaries: X (Y proved, Z disproved, W contradictory)"
+    - Parse errors: "Parse error" or syntax errors
+    - Well-formedness errors: "restriction", "typing", etc.
+    """
+    full_output = stdout + stderr
+    
+    # Check for parse errors (most critical)
+    parse_error_indicators = [
+        'parse error', 'syntax error', 'lexical error',
+        'unexpected token', 'parsing failed'
+    ]
+    
+    # Check for well-formedness errors
+    wellformedness_errors = [
+        'undeclared function', 'undeclared sort', 'type error',
+        'restriction not satisfied', 'unbound variable'
+    ]
+    
+    # Check for proof results (when proving lemmas)
+    proof_indicators = [
+        'verified', 'falsified', 'analysis complete',
+        'summary of summaries'
+    ]
+    
+    # Success indicators
+    success_indicators = [
+        'wellformedness check succeeded',
+        'all lemmas proved',
+        'theory loaded successfully'
+    ]
+    
+    # Analyze the output
+    has_parse_error = any(indicator in full_output.lower() for indicator in parse_error_indicators)
+    has_wellformedness_error = any(indicator in full_output.lower() for indicator in wellformedness_errors)
+    has_success_indicator = any(indicator in full_output.lower() for indicator in success_indicators)
+    
+    # Determine overall success
+    if returncode == 0 and not has_parse_error and not has_wellformedness_error:
+        success = True
+        status = "success"
+    elif has_parse_error:
+        success = False
+        status = "parse_error"
+    elif has_wellformedness_error:
+        success = False
+        status = "wellformedness_error"
+    else:
+        success = returncode == 0
+        status = "unknown" if success else "error"
+    
+    return {
+        'success': success,
+        'status': status,
+        'has_parse_error': has_parse_error,
+        'has_wellformedness_error': has_wellformedness_error,
+        'returncode': returncode
+    }
+
+def get_user_friendly_message(analysis):
+    """Generate user-friendly message based on analysis results."""
+    if analysis['success']:
+        return "✅ Theory compiled successfully! No syntax or well-formedness errors found."
+    elif analysis['has_parse_error']:
+        return "❌ Parse error detected. Please check your syntax."
+    elif analysis['has_wellformedness_error']:
+        return "❌ Well-formedness error detected. Please check your theory structure."
+    else:
+        return "❌ Compilation failed. Please check the output for details."
+
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -496,7 +570,7 @@ def n8n_compile():
     """
     N8N-compatible endpoint for compiling Tamarin theories.
     Expects JSON with 'code' field containing the .spthy code.
-    Returns simple success/failure response.
+    Returns detailed success/failure response with analysis.
     """
     try:
         # Handle both JSON and form data
@@ -510,7 +584,8 @@ def n8n_compile():
             return jsonify({
                 'success': False,
                 'error': 'No code provided',
-                'message': 'Please provide Tamarin theory code in the "code" field'
+                'message': 'Please provide Tamarin theory code in the "code" field',
+                'status': 'invalid_input'
             }), 400
         
         # Create a temporary file for the spthy code
@@ -527,20 +602,25 @@ def n8n_compile():
                 timeout=60
             )
             
-            # Determine if compilation was successful
-            compilation_successful = result.returncode == 0
+            # Analyze the output
+            analysis = analyze_tamarin_output(result.stdout, result.stderr, result.returncode)
             
-            # Prepare response
+            # Create detailed response
             response_data = {
-                'success': compilation_successful,
+                'success': analysis['success'],
+                'status': analysis['status'],
                 'returncode': result.returncode,
                 'stdout': result.stdout,
                 'stderr': result.stderr,
-                'message': 'Compilation successful' if compilation_successful else 'Compilation failed'
+                'analysis': {
+                    'has_parse_error': analysis['has_parse_error'],
+                    'has_wellformedness_error': analysis['has_wellformedness_error'],
+                },
+                'message': get_user_friendly_message(analysis)
             }
             
             # Return appropriate HTTP status
-            status_code = 200 if compilation_successful else 400
+            status_code = 200 if analysis['success'] else 400
             
             return jsonify(response_data), status_code
             
@@ -553,19 +633,22 @@ def n8n_compile():
         return jsonify({
             'success': False,
             'error': 'Compilation timed out',
-            'message': 'Tamarin compilation timed out after 60 seconds'
+            'message': 'Tamarin compilation timed out after 60 seconds',
+            'status': 'timeout'
         }), 408
     except FileNotFoundError:
         return jsonify({
             'success': False,
             'error': 'tamarin-prover not found',
-            'message': 'Tamarin Prover is not installed or not in PATH'
+            'message': 'Tamarin Prover is not installed or not in PATH',
+            'status': 'missing_binary'
         }), 500
     except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e),
-            'message': 'Internal server error during compilation'
+            'message': 'Internal server error during compilation',
+            'status': 'internal_error'
         }), 500
 
 @app.route('/health', methods=['GET'])
