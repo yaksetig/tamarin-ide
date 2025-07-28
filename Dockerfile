@@ -4,22 +4,32 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies needed for Tamarin
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     ca-certificates \
+    build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Tamarin Prover with timeout and retry handling
+# Try alternative Tamarin installation method
 RUN set -e && \
-    wget --timeout=30 --tries=3 \
-    https://github.com/tamarin-prover/tamarin-prover/releases/download/1.8.0/tamarin-prover-1.8.0-linux64-ubuntu.tar.gz && \
-    tar -xzf tamarin-prover-1.8.0-linux64-ubuntu.tar.gz && \
-    mv tamarin-prover-1.8.0-linux64-ubuntu/bin/tamarin-prover /usr/local/bin/ && \
+    cd /tmp && \
+    # Try direct download with progress
+    wget --progress=dot:giga --timeout=60 --tries=2 \
+    "https://github.com/tamarin-prover/tamarin-prover/releases/download/1.8.0/tamarin-prover-1.8.0-linux64-ubuntu.tar.gz" \
+    -O tamarin.tar.gz && \
+    echo "Download complete, extracting..." && \
+    tar -xzf tamarin.tar.gz && \
+    echo "Extraction complete, installing..." && \
+    cp tamarin-prover-1.8.0-linux64-ubuntu/bin/tamarin-prover /usr/local/bin/ && \
     chmod +x /usr/local/bin/tamarin-prover && \
-    rm -rf tamarin-prover-1.8.0-linux64-ubuntu* && \
-    tamarin-prover --version
+    echo "Cleaning up..." && \
+    rm -rf /tmp/tamarin* && \
+    echo "Testing installation..." && \
+    tamarin-prover --version && \
+    echo "Tamarin installation successful!"
 
 # Set working directory
 WORKDIR /app
