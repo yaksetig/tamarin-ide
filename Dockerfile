@@ -8,14 +8,18 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Tamarin Prover
-RUN wget https://github.com/tamarin-prover/tamarin-prover/releases/download/1.8.0/tamarin-prover-1.8.0-linux64-ubuntu.tar.gz \
-    && tar -xzf tamarin-prover-1.8.0-linux64-ubuntu.tar.gz \
-    && mv tamarin-prover-1.8.0-linux64-ubuntu/bin/tamarin-prover /usr/local/bin/ \
-    && chmod +x /usr/local/bin/tamarin-prover \
-    && rm -rf tamarin-prover-1.8.0-linux64-ubuntu*
+# Install Tamarin Prover with timeout and retry handling
+RUN set -e && \
+    wget --timeout=30 --tries=3 \
+    https://github.com/tamarin-prover/tamarin-prover/releases/download/1.8.0/tamarin-prover-1.8.0-linux64-ubuntu.tar.gz && \
+    tar -xzf tamarin-prover-1.8.0-linux64-ubuntu.tar.gz && \
+    mv tamarin-prover-1.8.0-linux64-ubuntu/bin/tamarin-prover /usr/local/bin/ && \
+    chmod +x /usr/local/bin/tamarin-prover && \
+    rm -rf tamarin-prover-1.8.0-linux64-ubuntu* && \
+    tamarin-prover --version
 
 # Set working directory
 WORKDIR /app
