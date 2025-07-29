@@ -1,35 +1,42 @@
-FROM ubuntu:22.04
+# Multi-stage build to get Tamarin working
+FROM haskell:8.10 as tamarin-builder
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    HOMEBREW_PREFIX=/home/linuxbrew/.linuxbrew \
-    PATH=/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/bin:/usr/bin:/bin
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential \
-      curl \
-      file \
-      git \
-      procps \
-      sudo \
-      python3 \
-      python3-pip \
-      ca-certificates \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
+# Install dependencies for building Tamarin
+RUN apt-get update && apt-get install -y \
+    git \
+    make \
+    graphviz \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m brewuser && echo "brewuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# Clone and build Tamarin from source
+RUN git clone --depth 1 --branch master https://github.com/tamarin-prover/tamarin-prover.git /tmp/tamarin && \
+    cd /tmp/tamarin && \
+    make default && \
+    cp dist/build/tamarin-prover/tamarin-prover /usr/local/bin/
 
-USER brewuser
-WORKDIR /home/brewuser
+# Final stage with Python
+FROM ubuntu:22.04
 
-RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
 
-RUN brew tap tamarin-prover/tap && brew install tamarin-prover
+# Install Python and dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    graphviz \
+    && rm -rf /var/lib/apt/lists/*
 
+# Copy Tamarin from builder stage
+COPY --from=tamarin-builder /usr/local/bin/tamarin-prover /usr/local/bin/
+RUN chmod +x /usr/local/bin/tamarin-prover
+
+# Verify Tamarin works
 RUN tamarin-prover --version
 
-USER root
+# Create python symlink
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
 WORKDIR /app
 
 COPY requirements.txt .
@@ -37,5 +44,6 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE ${PORT}
-CMD ["python", "app.py"]
+EXPOSE $PORT
+
+CMD python app.py
