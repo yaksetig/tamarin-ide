@@ -1,80 +1,32 @@
-# Use Ubuntu 22.04 - Tamarin is built for Ubuntu
 FROM ubuntu:22.04
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    wget \
-    curl \
-    ca-certificates \
+# 1. Install Homebrew prerequisites
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      curl \
+      file \
+      git \
+      procps \
+      sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Tamarin Prover - try multiple approaches
-RUN cd /tmp && \
-    echo "Downloading Tamarin Prover..." && \
-    # First try: Version 1.8.0
-    ( wget --no-check-certificate -O tamarin.tar.gz \
-      "https://github.com/tamarin-prover/tamarin-prover/releases/download/1.8.0/tamarin-prover-1.8.0-linux64-ubuntu.tar.gz" && \
-      echo "Downloaded successfully, extracting..." && \
-      tar -xzf tamarin.tar.gz && \
-      echo "Files extracted:" && \
-      ls -la && \
-      echo "Looking for tamarin-prover binary..." && \
-      find . -name "tamarin-prover" -type f && \
-      # Try different possible paths
-      if [ -f "tamarin-prover-1.8.0-linux64-ubuntu/bin/tamarin-prover" ]; then \
-        cp tamarin-prover-1.8.0-linux64-ubuntu/bin/tamarin-prover /usr/local/bin/; \
-      elif [ -f "bin/tamarin-prover" ]; then \
-        cp bin/tamarin-prover /usr/local/bin/; \
-      elif [ -f "tamarin-prover" ]; then \
-        cp tamarin-prover /usr/local/bin/; \
-      else \
-        echo "Binary not found in expected locations, searching..."; \
-        find . -name "tamarin-prover" -executable -exec cp {} /usr/local/bin/ \;; \
-      fi \
-    ) || \
-    # Fallback: Try version 1.6.1
-    ( echo "Trying version 1.6.1..." && \
-      wget --no-check-certificate -O tamarin.tar.gz \
-      "https://github.com/tamarin-prover/tamarin-prover/releases/download/1.6.1/tamarin-prover-1.6.1-linux64-ubuntu.tar.gz" && \
-      tar -xzf tamarin.tar.gz && \
-      find . -name "tamarin-prover" -executable -exec cp {} /usr/local/bin/ \; \
-    ) || \
-    # Last resort: Install via apt if available
-    ( echo "Trying package manager..." && \
-      apt-get update && \
-      apt-get install -y tamarin-prover \
-    )
+# 2. Create a non‑root user for Homebrew (recommended)
+RUN useradd -m brewuser && echo "brewuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Make executable and verify
-RUN chmod +x /usr/local/bin/tamarin-prover && \
-    echo "Verifying Tamarin installation..." && \
-    ls -la /usr/local/bin/tamarin-prover && \
-    /usr/local/bin/tamarin-prover --version
+USER brewuser
+WORKDIR /home/brewuser
 
-# Clean up
-RUN rm -rf /tmp/* && apt-get clean
+# 3. Install Homebrew
+RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+  && echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.profile
 
-# Create python symlink
-RUN ln -sf /usr/bin/python3 /usr/bin/python
+# 4. Load Homebrew environment and install Tamarin
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+RUN . ~/.profile && \
+    brew tap tamarin-prover/tap && \
+    brew install tamarin-prover
 
-# Set working directory
-WORKDIR /app
+# 5. Verify
+RUN tamarin-prover --version
 
-# Copy and install Python dependencies
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Expose port
-EXPOSE $PORT
-
-# Run the application
-CMD python app.py
+# (…rest of your Dockerfile…)
