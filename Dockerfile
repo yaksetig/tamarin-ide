@@ -1,6 +1,10 @@
 FROM ubuntu:22.04
 
-# 1. Install Homebrew prerequisites
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HOMEBREW_PREFIX=/home/linuxbrew/.linuxbrew \
+    PATH=/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/bin:/usr/bin:/bin
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \
       curl \
@@ -8,25 +12,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git \
       procps \
       sudo \
+      python3 \
+      python3-pip \
+      ca-certificates \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Create a non‑root user for Homebrew (recommended)
 RUN useradd -m brewuser && echo "brewuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 USER brewuser
 WORKDIR /home/brewuser
 
-# 3. Install Homebrew
-RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-  && echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.profile
+RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# 4. Load Homebrew environment and install Tamarin
-ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
-RUN . ~/.profile && \
-    brew tap tamarin-prover/tap && \
-    brew install tamarin-prover
+RUN brew tap tamarin-prover/tap && brew install tamarin-prover
 
-# 5. Verify
 RUN tamarin-prover --version
 
-# (…rest of your Dockerfile…)
+USER root
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE ${PORT}
+CMD ["python", "app.py"]
